@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>WebAgent // Neural Recon System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="shell">
+
+<!-- ═══════════════ SIDEBAR ═══════════════ -->
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-mark">
+      <div class="logo-icon">🕷</div>
+      <div class="logo-name">WEB<span>AGENT</span></div>
+    </div>
+    <div class="logo-sub">groq llm · playwright · sqlite</div>
+  </div>
+
+  <div class="side-tabs">
+    <button class="side-tab active" onclick="sideTab('config')">Config</button>
+    <button class="side-tab" onclick="sideTab('sessions')">Sessions</button>
+    <button class="side-tab" onclick="sideTab('keys')">Keys</button>
+  </div>
+
+  <!-- CONFIG PANE -->
+  <div class="pane active" id="sp-config">
+    <div class="pane-scroll">
+      <div class="field">
+        <label>Target URL</label>
+        <input id="url" type="url" placeholder="https://target.domain"/>
+      </div>
+      <div class="field">
+        <label>Crawl Goal</label>
+        <textarea id="goal">Find all contact information, emails, phone numbers, team members, and social media profiles</textarea>
+      </div>
+      <div class="g3">
+        <div class="field"><label>Max Steps</label><input id="steps" type="number" value="25" min="5" max="200"/></div>
+        <div class="field"><label>Max Depth</label><input id="depth" type="number" value="3" min="1" max="10"/></div>
+        <div class="field"><label>Delay (s)</label><input id="delay" type="number" value="1.5" min="0.5" max="5" step="0.5"/></div>
+      </div>
+      <div class="field">
+        <label>LLM Model</label>
+        <select id="model">
+          <option value="llama-3.3-70b-versatile" selected>llama-3.3-70b-versatile</option>
+          <option value="llama3-70b-8192">llama3-70b-8192</option>
+          <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+          <option value="gemma2-9b-it">gemma2-9b-it</option>
+        </select>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-lbl">Same domain only</span>
+        <label class="sw"><input type="checkbox" id="sameDomain" checked><span class="knob"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-lbl">Headless browser</span>
+        <label class="sw"><input type="checkbox" id="headless" checked><span class="knob"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-lbl">Save report file</span>
+        <label class="sw"><input type="checkbox" id="saveReport" checked><span class="knob"></span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- SESSIONS PANE -->
+  <div class="pane" id="sp-sessions">
+    <div class="pane-scroll" id="sessionsPane">
+      <div class="no-sessions">
+        <div class="icon">📂</div>
+        <p>No past sessions yet.</p>
+        <p>Run the agent to start.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- KEYS PANE -->
+  <div class="pane" id="sp-keys">
+    <div class="pane-scroll">
+      <p class="keys-note">
+        Keys saved to <code>keys.json</code> (auto-gitignored).
+        Multiple keys rotate on rate limits.
+      </p>
+      <div id="keysList"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        <button class="ib" onclick="addKey()">+ Add key</button>
+        <button class="ib" onclick="saveKeys()">Save keys</button>
+        <button class="ib danger" onclick="clearKeys()">Clear all</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="run-area">
+    <button class="run-btn" id="runBtn" onclick="startRun()">▶ INITIATE</button>
+    <button class="run-btn stop" id="stopBtn" onclick="stopRun()" style="display:none;flex:0 0 auto;padding:12px 16px">■ ABORT</button>
+  </div>
+</aside>
+
+<!-- ═══════════════ MAIN ═══════════════ -->
+<main class="main">
+  <div class="main-header">
+    <div class="mh-left">
+      <div class="status-badge">
+        <div class="dot" id="dot"></div>
+        <span id="statusLbl">STANDBY</span>
+      </div>
+      <div class="step-counter" id="stepCounter"></div>
+    </div>
+    <div class="hdr-btns">
+      <button class="hdr-btn" onclick="copyCmd()">Copy CLI</button>
+      <button class="hdr-btn" onclick="exportJSON()">Export JSON</button>
+      <button class="hdr-btn" onclick="clearAll()">Clear</button>
+    </div>
+  </div>
+
+  <div class="progress-bar-wrap">
+    <div class="progress-track"><div class="progress-fill" id="progFill"></div></div>
+    <div class="progress-meta">
+      <span id="progLabel">No run yet</span>
+      <span id="progPct"></span>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat"><div class="stat-n" id="s-pages">0</div><div class="stat-l">Pages</div></div>
+    <div class="stat"><div class="stat-n" id="s-emails">0</div><div class="stat-l">Emails</div></div>
+    <div class="stat"><div class="stat-n" id="s-phones">0</div><div class="stat-l">Phones</div></div>
+    <div class="stat"><div class="stat-n" id="s-socials">0</div><div class="stat-l">Socials</div></div>
+    <div class="stat"><div class="stat-n" id="s-people">0</div><div class="stat-l">People</div></div>
+  </div>
+
+  <div class="main-tabs">
+    <button class="main-tab active" onclick="mainTab('log')">Terminal</button>
+    <button class="main-tab" onclick="mainTab('emails')">Emails <span class="badge" id="b-emails">0</span></button>
+    <button class="main-tab" onclick="mainTab('phones')">Phones <span class="badge" id="b-phones">0</span></button>
+    <button class="main-tab" onclick="mainTab('socials')">Social <span class="badge" id="b-socials">0</span></button>
+    <button class="main-tab" onclick="mainTab('people')">People <span class="badge" id="b-people">0</span></button>
+    <button class="main-tab" onclick="mainTab('visited')">Visited <span class="badge" id="b-visited">0</span></button>
+    <button class="main-tab" onclick="mainTab('report')">Report</button>
+  </div>
+
+  <div class="content-wrap">
+    <div class="cpane active" id="cp-log">
+      <div class="log" id="logOut"></div>
+    </div>
+    <div class="cpane" id="cp-emails">
+      <div id="emailsOut"><div class="empty"><div class="icon">✉️</div><p>No emails found yet.</p></div></div>
+    </div>
+    <div class="cpane" id="cp-phones">
+      <div id="phonesOut"><div class="empty"><div class="icon">📞</div><p>No phone numbers found yet.</p></div></div>
+    </div>
+    <div class="cpane" id="cp-socials">
+      <div id="socialsOut"><div class="empty"><div class="icon">🌐</div><p>No social profiles found yet.</p></div></div>
+    </div>
+    <div class="cpane" id="cp-people">
+      <div id="peopleOut"><div class="empty"><div class="icon">👤</div><p>No people found yet.</p></div></div>
+    </div>
+    <div class="cpane" id="cp-visited">
+      <div id="visitedOut"><div class="empty"><div class="icon">🔗</div><p>No pages visited yet.</p></div></div>
+    </div>
+    <div class="cpane" id="cp-report">
+      <pre class="report-pre" id="reportOut">// Awaiting agent run…</pre>
+    </div>
+  </div>
+</main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const S = {
+  emails:[], phones:[], socials:{}, people:[], pages:0,
+  visited:[], report:null, running:false, viewingSession:null
+};
+let es = null;
+let prevNums = {pages:0,emails:0,phones:0,socials:0,people:0};
+const TABS = ['log','emails','phones','socials','people','visited','report'];
+const SIDE_TABS = ['config','sessions','keys'];
+
+// ── Sidebar tabs ───────────────────────────────────────────────────────────
+function sideTab(name) {
+  document.querySelectorAll('.side-tab').forEach((t,i)=>t.classList.toggle('active',SIDE_TABS[i]===name));
+  document.querySelectorAll('.sidebar .pane').forEach(p=>p.classList.remove('active'));
+  document.getElementById('sp-'+name).classList.add('active');
+  if(name==='sessions') loadSessions();
+  if(name==='keys') renderKeys();
+}
+
+// ── Main tabs ──────────────────────────────────────────────────────────────
+function mainTab(name) {
+  document.querySelectorAll('.main-tab').forEach((t,i)=>t.classList.toggle('active',TABS[i]===name));
+  document.querySelectorAll('.cpane').forEach(p=>p.classList.remove('active'));
+  document.getElementById('cp-'+name).classList.add('active');
+}
+
+// ── Keys ───────────────────────────────────────────────────────────────────
+function renderKeys() {
+  fetch('/api/keys').then(r=>r.json()).then(keys=>{
+    const el = document.getElementById('keysList');
+    el.innerHTML = '';
+    (keys.length ? keys : ['']).forEach((k,i)=>{
+      const row = document.createElement('div');
+      row.className = 'key-row';
+      row.innerHTML = `<input type="password" value="${k}" placeholder="gsk_..." data-i="${i}"/>`
+        + (keys.length?`<button class="ib danger" onclick="delKey(${i})">✕</button>`:'');
+      el.appendChild(row);
+    });
+  });
+}
+function addKey(){
+  const el=document.getElementById('keysList');
+  const row=document.createElement('div');
+  row.className='key-row';
+  row.innerHTML='<input type="password" placeholder="gsk_..."/>';
+  el.appendChild(row);
+  row.querySelector('input').focus();
+}
+function saveKeys(){
+  const keys=[...document.querySelectorAll('#keysList input')].map(i=>i.value.trim()).filter(Boolean);
+  fetch('/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({keys})})
+    .then(()=>{toast('Keys saved ✓');renderKeys();});
+}
+function delKey(i){fetch('/api/keys/'+i,{method:'DELETE'}).then(renderKeys);}
+function clearKeys(){if(confirm('Clear all keys?'))fetch('/api/keys',{method:'DELETE'}).then(renderKeys);}
+
+// ── Sessions ───────────────────────────────────────────────────────────────
+function loadSessions() {
+  fetch('/api/sessions').then(r=>r.json()).then(sessions=>{
+    const el = document.getElementById('sessionsPane');
+    if(!sessions.length){
+      el.innerHTML='<div class="no-sessions"><div class="icon">📂</div><p>No past sessions yet.</p><p>Run the agent to start.</p></div>';
+      return;
+    }
+    el.innerHTML = sessions.map(s=>{
+      const st = s.stats||{};
+      const ago = timeAgo(s.created_at);
+      return `<div class="session-card${S.viewingSession===s.id?' active-session':''}" onclick="viewSession('${s.id}')">
+        <div class="sc-status ${s.status||'done'}"></div>
+        <div class="sc-domain">${s.domain||s.url}</div>
+        <div class="sc-goal">${(s.goal||'').slice(0,60)}</div>
+        <div class="sc-meta">
+          <span class="sc-pill">${ago}</span>
+          ${st.emails?`<span class="sc-pill em">✉ ${st.emails}</span>`:''}
+          ${st.phones?`<span class="sc-pill ph">📞 ${st.phones}</span>`:''}
+          ${st.pages?`<span class="sc-pill">${st.pages} pages</span>`:''}
+        </div>
+        <span class="sc-del" onclick="deleteSession(event,'${s.id}')">🗑</span>
+      </div>`;
+    }).join('');
+  });
+}
+
+function viewSession(id) {
+  S.viewingSession = id;
+  fetch('/api/sessions/'+id+'/data').then(r=>r.json()).then(d=>{
+    if(d.error){toast(d.error);return;}
+    S.emails=d.emails||[]; S.phones=d.phones||[];
+    S.socials=d.socials||{}; S.people=d.people||[];
+    S.visited=d.visited||[]; S.pages=S.visited.length;
+    S.report=d.report||null;
+    updateStats(true); renderAll();
+    if(d.report) document.getElementById('reportOut').textContent=JSON.stringify(d.report,null,2);
+    const logCp=document.getElementById('cp-log');
+    const existBanner=logCp.querySelector('.session-view-banner');
+    if(existBanner) existBanner.remove();
+    const banner=document.createElement('div');
+    banner.className='session-view-banner';
+    banner.innerHTML=`<span class="svg-info">📂 Viewing: <strong>${d.url||id}</strong> · ${(d.goal||'').slice(0,50)}</span>
+      <button class="svg-close" onclick="clearSessionView()">✕ Close</button>`;
+    logCp.insertBefore(banner,logCp.firstChild);
+    mainTab('emails'); sideTab('sessions'); loadSessions();
+    toast('Session loaded ✓');
+  });
+}
+
+function clearSessionView() {
+  S.viewingSession=null;
+  const banner=document.querySelector('.session-view-banner');
+  if(banner) banner.remove();
+  loadSessions();
+}
+
+function deleteSession(e,id) {
+  e.stopPropagation();
+  if(!confirm('Delete this session and its data?')) return;
+  fetch('/api/sessions/'+id,{method:'DELETE'}).then(()=>{
+    if(S.viewingSession===id) clearSessionView();
+    loadSessions(); toast('Session deleted');
+  });
+}
+
+function timeAgo(ts) {
+  if(!ts) return '';
+  const d=new Date(ts.replace(' ','T'));
+  const diff=(Date.now()-d)/1000;
+  if(diff<60) return 'just now';
+  if(diff<3600) return Math.floor(diff/60)+'m ago';
+  if(diff<86400) return Math.floor(diff/3600)+'h ago';
+  return Math.floor(diff/86400)+'d ago';
+}
+
+// ── Run ────────────────────────────────────────────────────────────────────
+function getCfg() {
+  return {
+    url: document.getElementById('url').value.trim(),
+    goal: document.getElementById('goal').value.trim(),
+    model: document.getElementById('model').value,
+    steps: parseInt(document.getElementById('steps').value)||25,
+    depth: parseInt(document.getElementById('depth').value)||3,
+    same_domain: document.getElementById('sameDomain').checked,
+    headless: document.getElementById('headless').checked,
+    save_report: document.getElementById('saveReport').checked,
+  };
+}
+
+function startRun() {
+  const cfg=getCfg();
+  if(!cfg.url){toast('Enter a target URL first');return;}
+  clearSessionView();
+  Object.assign(S,{emails:[],phones:[],socials:{},people:[],visited:[],pages:0,report:null,running:true});
+  document.getElementById('logOut').innerHTML='';
+  document.getElementById('reportOut').textContent='// Running neural recon…';
+  updateStats(true); renderAll(); mainTab('log');
+  setUIRunning(true);
+  fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.error){log('ERROR: '+d.error,'err');setUIRunning(false);return;}
+      openSSE();
+    })
+    .catch(e=>{log('Network error: '+e,'err');setUIRunning(false);});
+}
+
+function stopRun(){fetch('/api/stop',{method:'POST'}).then(()=>toast('Abort signal dispatched…'));}
+
+function openSSE() {
+  if(es) es.close();
+  es=new EventSource('/api/stream');
+  es.addEventListener('log',e=>{const d=JSON.parse(e.data);log(d.msg,d.cls||'');});
+  es.addEventListener('progress',e=>{
+    const d=JSON.parse(e.data);
+    document.getElementById('progFill').style.width=d.pct+'%';
+    document.getElementById('progLabel').textContent=d.label||'';
+    document.getElementById('progPct').textContent=d.pct+'%';
+    if(d.step!=null) document.getElementById('stepCounter').textContent=`STEP ${d.step} / ${d.max_steps}`;
+  });
+  es.addEventListener('stats',e=>{
+    const d=JSON.parse(e.data);
+    S.emails=d.emails||[]; S.phones=d.phones||[];
+    S.socials=d.socials||{}; S.people=d.people||[];
+    S.visited=d.visited||[]; S.pages=d.pages||0;
+    updateStats(); renderAll();
+  });
+  es.addEventListener('done',e=>{
+    const d=JSON.parse(e.data);
+    S.report=d.report;
+    if(d.report) document.getElementById('reportOut').textContent=JSON.stringify(d.report,null,2);
+    setUIRunning(false);
+    document.getElementById('progFill').style.width='100%';
+    document.getElementById('progLabel').textContent='Complete';
+    document.getElementById('stepCounter').textContent='';
+    updateStats(); renderAll(); loadSessions();
+    es.close(); es=null;
+    log('✅ Agent mission complete.','ok');
+  });
+  es.onerror=()=>{setUIRunning(false);if(es){es.close();es=null;}};
+}
+
+function setUIRunning(on) {
+  S.running=on;
+  const runBtn=document.getElementById('runBtn');
+  const stopBtn=document.getElementById('stopBtn');
+  const dot=document.getElementById('dot');
+  const lbl=document.getElementById('statusLbl');
+  runBtn.disabled=on;
+  stopBtn.style.display=on?'block':'none';
+  dot.classList.toggle('active',on);
+  lbl.textContent=on?'SCANNING':'DONE';
+  if(!on && lbl.textContent==='DONE'){
+    setTimeout(()=>{if(!S.running)lbl.textContent='STANDBY';},3000);
+  }
+}
+
+// ── Log ────────────────────────────────────────────────────────────────────
+function log(msg,cls=''){
+  const el=document.getElementById('logOut');
+  const line=document.createElement('span');
+  const clsMap={ok:'ll-ok',warn:'ll-warn',err:'ll-err',info:'ll-info',step:'ll-step',dim:'ll-dim'};
+  line.className='ll '+(clsMap[cls]||'ll-dim');
+  line.textContent=msg;
+  el.appendChild(line);
+  el.appendChild(document.createTextNode('\n'));
+  el.parentElement.scrollTop=el.parentElement.scrollHeight;
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+function updateStats(reset=false){
+  const nums={
+    pages:S.pages||0,
+    emails:(S.emails||[]).length,
+    phones:(S.phones||[]).length,
+    socials:Object.values(S.socials||{}).flat().length,
+    people:(S.people||[]).length,
+  };
+  ['pages','emails','phones','socials','people'].forEach(k=>{
+    const el=document.getElementById('s-'+k);
+    animateNum(el, reset ? 0 : (prevNums[k]||0), nums[k]);
+    if(!reset&&nums[k]!==prevNums[k]&&nums[k]>0){
+      el.classList.add('flash');
+      setTimeout(()=>el.classList.remove('flash'),600);
+    }
+  });
+  ['emails','phones','socials','people'].forEach(k=>{
+    const b=document.getElementById('b-'+k);
+    if(b) b.textContent=nums[k];
+  });
+  const vb=document.getElementById('b-visited');
+  if(vb) vb.textContent=S.visited?S.visited.length:0;
+  prevNums={...nums};
+}
+
+function animateNum(el, from, to) {
+  if(from===to){el.textContent=to;return;}
+  const dur=400, steps=20, step=(to-from)/steps;
+  let cur=from, count=0;
+  const timer=setInterval(()=>{
+    count++;
+    cur+=step;
+    el.textContent=Math.round(count<steps?cur:to);
+    if(count>=steps){clearInterval(timer);el.textContent=to;}
+  },dur/steps);
+}
+
+// ── Results render ─────────────────────────────────────────────────────────
+function renderAll(){renderEmails();renderPhones();renderSocials();renderPeople();renderVisited();}
+
+function renderEmails(){
+  const el=document.getElementById('emailsOut');
+  if(!S.emails.length){el.innerHTML='<div class="empty"><div class="icon">✉️</div><p>No emails found yet.</p></div>';return;}
+  el.innerHTML='<div class="chip-grid">'+S.emails.map(e=>
+    `<span class="chip em">${e}<span class="chip-copy" onclick="copy('${e}')">⎘</span></span>`).join('')+'</div>';
+}
+
+function renderPhones(){
+  const el=document.getElementById('phonesOut');
+  if(!S.phones.length){el.innerHTML='<div class="empty"><div class="icon">📞</div><p>No phone numbers found yet.</p></div>';return;}
+  el.innerHTML='<div class="chip-grid">'+S.phones.map(p=>
+    `<span class="chip ph">${p}<span class="chip-copy" onclick="copy('${p}')">⎘</span></span>`).join('')+'</div>';
+}
+
+function renderSocials(){
+  const el=document.getElementById('socialsOut');
+  const keys=Object.keys(S.socials||{});
+  if(!keys.length){el.innerHTML='<div class="empty"><div class="icon">🌐</div><p>No social profiles found yet.</p></div>';return;}
+  el.innerHTML=keys.map(p=>
+    `<div class="plat-hd">${p}</div><div class="chip-grid">`+
+    S.socials[p].map(u=>`<span class="chip soc"><a href="${u}" target="_blank" style="color:inherit;text-decoration:none">${u.slice(0,50)}</a><span class="chip-copy" onclick="copy('${u}')">⎘</span></span>`).join('')+
+    '</div>').join('');
+}
+
+function renderPeople(){
+  const el=document.getElementById('peopleOut');
+  if(!(S.people||[]).length){el.innerHTML='<div class="empty"><div class="icon">👤</div><p>No people found yet.</p></div>';return;}
+  el.innerHTML='<div class="people-grid">'+S.people.map(p=>{
+    const links=[
+      p.email?`<a class="plink em" href="mailto:${p.email}">${p.email}</a>`:'',
+      p.linkedin?`<a class="plink li" href="${p.linkedin}" target="_blank">LinkedIn</a>`:'',
+      p.twitter?`<a class="plink tw" href="${p.twitter}" target="_blank">Twitter/X</a>`:'',
+    ].filter(Boolean).join('');
+    return `<div class="person-card">
+      <div class="pname">${p.name}</div>
+      ${p.role?`<div class="prole">${p.role}</div>`:''}
+      ${links?`<div class="plinks">${links}</div>`:''}
+    </div>`;
+  }).join('')+'</div>';
+}
+
+function renderVisited(){
+  const el=document.getElementById('visitedOut');
+  if(!(S.visited||[]).length){el.innerHTML='<div class="empty"><div class="icon">🔗</div><p>No pages visited yet.</p></div>';return;}
+  el.innerHTML='<div class="url-list">'+S.visited.map(v=>`
+    <div class="url-row">
+      <span class="url-depth">D${v.depth||0}</span>
+      <a class="url-href" href="${v.url}" target="_blank">${v.url}</a>
+      ${v.title?`<span class="url-title">${v.title}</span>`:''}
+    </div>`).join('')+'</div>';
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+function copyCmd(){
+  fetch('/api/keys').then(r=>r.json()).then(keys=>{
+    const cfg=getCfg();
+    const cmd=`python main.py --url "${cfg.url}" --goal "${cfg.goal}" --keys ${keys.join(',')} --model ${cfg.model} --steps ${cfg.steps} --depth ${cfg.depth}${!cfg.same_domain?' --all-domains':''}${!cfg.headless?' --headed':''}${!cfg.save_report?' --no-report':''}`;
+    copy(cmd); toast('CLI command copied ✓');
+  });
+}
+
+function exportJSON(){
+  if(!S.report){toast('No report yet — run the agent first');return;}
+  const blob=new Blob([JSON.stringify(S.report,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='report_'+Date.now()+'.json';a.click();
+}
+
+function clearAll(){
+  Object.assign(S,{emails:[],phones:[],socials:{},people:[],visited:[],pages:0,report:null});
+  document.getElementById('logOut').innerHTML='';
+  document.getElementById('progFill').style.width='0';
+  document.getElementById('progLabel').textContent='No run yet';
+  document.getElementById('progPct').textContent='';
+  document.getElementById('stepCounter').textContent='';
+  document.getElementById('reportOut').textContent='// Awaiting agent run…';
+  document.getElementById('statusLbl').textContent='STANDBY';
+  updateStats(true); renderAll(); clearSessionView();
+}
+
+function copy(txt){
+  navigator.clipboard.writeText(txt).catch(()=>{
+    const t=document.createElement('textarea');
+    t.value=txt;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();
+  });
+}
+
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+// Init
+renderKeys();
+</script>
+</body>
+</html>

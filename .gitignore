@@ -1,0 +1,17 @@
+# API keys
+keys.json
+
+# Reports in root
+report_*.json
+report_*.txt
+
+# Reports folder (has your DBs + session data)
+reports/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
