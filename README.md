@@ -54,7 +54,6 @@ source .venv/bin/activate      # Linux/macOS
 
 ```bash
 pip install -r requirements.txt
-pip install httpx              # required for LLM extraction
 playwright install chromium
 ```
 
@@ -218,6 +217,15 @@ python main.py \
 
 ---
 
-## 📄 License
+## Responsible use
 
-MIT — do whatever you want, just don't use it to scrape sites that prohibit it in their ToS.
+This tool collects contact data (emails, phone numbers, people) from web pages, which is personal data in many jurisdictions.
+
+- Only crawl sites you own or have permission to crawl, and respect their Terms of Service
+- The crawler does **not** currently check `robots.txt`; adding that is on the roadmap
+- Comply with data-protection law (GDPR and local privacy laws) when storing or processing what you collect
+- Session databases and reports are gitignored because they may contain personal data
+
+## License
+
+MIT. See [LICENSE](LICENSE).
